@@ -175,7 +175,7 @@ private:
 	void read_output(void);
 
 public:
-	void write_input(std::wstring s);
+	void write_input(const std::wstring& s);
 
 	bool wait(DWORD timeout = INFINITE);
 	bool kill(void);
@@ -360,7 +360,7 @@ void process_command::read_output(void)
 	}
 }
 
-void process_command::write_input(std::wstring input)
+void process_command::write_input(const std::wstring& input)
 {
 	std::wcout << L"Input: " << input << std::endl;
 
