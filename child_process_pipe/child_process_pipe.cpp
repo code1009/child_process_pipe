@@ -153,17 +153,12 @@ void process_pipe::close(void)
 class process_output
 {
 private:
-	HANDLE _hstop{ nullptr };
-	HANDLE _hread{ nullptr };
-
-private:
 	std::thread _thread;
 	HANDLE _hfile{ nullptr };
 
 	const DWORD BUFFER_SIZE = 4096;
 	std::vector<char> _buffer;
 	DWORD _NumberOfBytesRead;
-	OVERLAPPED _io_ov;
 	bool _loop;
 
 public:
@@ -180,8 +175,6 @@ public:
 
 private:
 	void thread_entry(void);
-	void wait_event(void);
-	void read(void);
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -198,34 +191,11 @@ process_output::~process_output()
 
 void process_output::create(void)
 {
-	_hstop = CreateEventW(nullptr, false, false, nullptr);
-	if (nullptr == _hstop)
-	{
-		destroy();
-		throw std::runtime_error("Failed to CreateEventW()");
-	}
-	_hread = CreateEventW(nullptr, false, false, nullptr);
-	if (nullptr == _hstop)
-	{
-		destroy();
-		throw std::runtime_error("Failed to CreateEventW()");
-	}
-
 	_buffer.assign(BUFFER_SIZE, 0);
 }
 
 void process_output::destroy(void)
 {
-	if (_hread != nullptr)
-	{
-		CloseHandle(_hread);
-		_hread = nullptr;
-	}
-	if (_hstop != nullptr)
-	{
-		CloseHandle(_hstop);
-		_hstop = nullptr;
-	}
 }
 
 void process_output::start(HANDLE hfile)
@@ -243,8 +213,6 @@ void process_output::stop(void)
 {
 	if (_thread.joinable())
 	{
-		SetEvent(_hstop);
-
 		_thread.join();
 	}
 }
@@ -256,16 +224,16 @@ void process_output::thread_entry(void)
 
 	BOOL result;
 	DWORD error;
-	BOOL rv;
 	while (_loop)
 	{
-		memset(&_io_ov, 0, sizeof(_io_ov));
-		_io_ov.hEvent = _hread;
-		result = ReadFile(_hfile, _buffer.data(), BUFFER_SIZE, &_NumberOfBytesRead, &_io_ov);
+		result = ReadFile(_hfile, _buffer.data(), BUFFER_SIZE, &_NumberOfBytesRead, nullptr);
 		if (TRUE == result)
 		{
-			std::cerr << "TRUE" << std::endl;
-			wait_event();
+			if (_NumberOfBytesRead > 0)
+			{
+				std::wstring s = mbcs_to_wcs(std::string(_buffer.data(), _NumberOfBytesRead), CP_THREAD_ACP);
+				std::wcout << "Output: " << std::endl << s << std::endl;
+			}
 			continue;
 		}
 
@@ -275,11 +243,8 @@ void process_output::thread_entry(void)
 		{
 		case NO_ERROR:
 			std::cerr << "NO_ERROR" << std::endl;
+			_loop = false;
 			break;
-
-		case ERROR_IO_PENDING:
-			wait_event();
-			continue;
 
 		case ERROR_BROKEN_PIPE:
 			std::cerr << "ERROR_BROKEN_PIPE" << std::endl;
@@ -296,74 +261,6 @@ void process_output::thread_entry(void)
 			_loop = false;
 			break;
 		}
-
-
-		std::cerr << "CancelIoEx()" << std::endl;
-		rv = CancelIoEx(_hfile, &_io_ov);
-		if (FALSE == rv)
-		{
-			std::cerr << "CancelIoEx() failed" << std::endl;
-		}
-	}
-}
-
-void process_output::wait_event(void)
-{
-	HANDLE handles[2];
-	handles[0] = _hstop;
-	handles[1] = _hread;
-
-
-	DWORD object;
-	object = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
-	switch (object)
-	{
-	case WAIT_OBJECT_0 + 0:
-		_loop = false;
-		break;
-
-	case WAIT_ABANDONED_0 + 0:
-		_loop = false;
-		break;
-
-	case WAIT_OBJECT_0 + 1:
-		read();
-		break;
-
-	case WAIT_ABANDONED_0 + 1:
-		read();
-		break;
-
-	case WAIT_TIMEOUT:
-		break;
-
-	case WAIT_FAILED:
-		_loop = false;
-		break;
-
-	default:
-		_loop = false;
-		break;
-	}
-}
-
-void process_output::read(void)
-{
-	BOOL result;
-	DWORD NumberOfBytesRead;
-	result = GetOverlappedResult(_hfile, &_io_ov, &NumberOfBytesRead, TRUE);
-	if (FALSE == result)
-	{
-		std::cerr << "GetOverlappedResult() failed" << std::endl;
-		_loop = false;
-		return;
-	}
-
-
-	if (NumberOfBytesRead > 0)
-	{
-		std::wstring s = mbcs_to_wcs(std::string(_buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
-		std::wcout << "Output: " << std::endl << s << std::endl;
 	}
 }
 
@@ -515,7 +412,6 @@ void process_command::destroy(void)
 
 
 	_rpipe.close();
-
 	_output.stop();
 }
 
