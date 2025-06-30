@@ -159,7 +159,7 @@ private:
 	const DWORD BUFFER_SIZE = 4096;
 	std::vector<char> _buffer;
 	DWORD _NumberOfBytesRead;
-	bool _loop;
+	std::atomic_bool _loop{ false };
 
 public:
 	process_output();
@@ -211,6 +211,8 @@ void process_output::start(HANDLE hfile)
 
 void process_output::stop(void)
 {
+	_loop = false;
+
 	if (_thread.joinable())
 	{
 		_thread.join();
@@ -378,7 +380,7 @@ void process_command::destroy(void)
 	if (_pi.hProcess)
 	{
 		DWORD object;
-		object = WaitForSingleObject(_pi.hProcess, 1000);
+		object = WaitForSingleObject(_pi.hProcess, 3000);
 		switch (object)
 		{
 		case WAIT_OBJECT_0:
@@ -386,7 +388,7 @@ void process_command::destroy(void)
 			break;
 
 		case WAIT_TIMEOUT:
-			if (FALSE == TerminateProcess(_pi.hProcess, 0))
+			if (FALSE == TerminateProcess(_pi.hProcess, 0xFFFFFFFF))
 			{
 				std::wcerr << L"Failed to TerminateProcess()" << std::endl;
 			}
@@ -396,8 +398,26 @@ void process_command::destroy(void)
 		default:
 			break;
 		}
+
+		
+		DWORD code = 0;
+		if (!GetExitCodeProcess(_pi.hProcess, &code))
+		{
+			std::wcerr << L"GetExitCodeProcess failed: " << GetLastError() << std::endl;
+		}
+		else
+		{
+			std::wcerr << L"process return code: " << code << std::endl;
+		}
 	}
 
+
+	_rpipe.close();
+	_wpipe.close();
+	Sleep(1000);
+	_output.stop();
+
+	
 	
 	if (_pi.hThread != nullptr)
 	{
@@ -409,10 +429,6 @@ void process_command::destroy(void)
 		CloseHandle(_pi.hProcess);
 		_pi.hProcess = nullptr;
 	}
-
-
-	_rpipe.close();
-	_output.stop();
 }
 
 void process_command::write_input(const std::wstring& input)
@@ -493,7 +509,7 @@ bool process_command::kill(void)
 		break;
 
 	case WAIT_TIMEOUT:
-		if (FALSE==TerminateProcess(_pi.hProcess, 0))
+		if (FALSE==TerminateProcess(_pi.hProcess, 0xFFFFFFFF))
 		{
 			result = false;
 		}
