@@ -147,9 +147,9 @@ void process_pipe::destroy(void)
 class process_command
 {
 public:
-	std::wstring _process_file_path;
+	std::wstring _command;
 	std::wstring _command_line;
-	std::thread _process_thread;
+	std::thread _thread;
 
 	process_pipe _rpipe;
 	process_pipe _wpipe;
@@ -159,17 +159,17 @@ public:
 
 
 public:
-	explicit process_command(std::wstring const& file_path);
+	explicit process_command(std::wstring const& command);
 	~process_command();
 	
 private:
-	std::wstring make_command_line(std::wstring const& file_path);
+	std::wstring make_command_line(std::wstring const& command);
 
 private:
 	void create(void);
 	void destroy(void);
 
-	void process_thread(void);
+	void thread_entry(void);
 
 private:
 	void read_output(void);
@@ -183,10 +183,10 @@ public:
 
 /////////////////////////////////////////////////////////////////////////////
 //===========================================================================
-process_command::process_command(std::wstring const& file_path):
-	_process_file_path(file_path)
+process_command::process_command(std::wstring const& command):
+	_command(command)
 {
-	_command_line = make_command_line(file_path);
+	_command_line = make_command_line(command);
 
 	create();
 }
@@ -250,7 +250,7 @@ void process_command::create(void)
 	}
 
 
-	_process_thread = std::thread(&process_command::process_thread, this);
+	_thread = std::thread(&process_command::thread_entry, this);
 }
 
 void process_command::destroy(void)
@@ -279,9 +279,9 @@ void process_command::destroy(void)
 	}
 
 
-	if (_process_thread.joinable())
+	if (_thread.joinable())
 	{
-		_process_thread.join();
+		_thread.join();
 	}
 
 
@@ -297,7 +297,7 @@ void process_command::destroy(void)
 	}
 }
 
-void process_command::process_thread(void)
+void process_command::thread_entry(void)
 {
 	bool loop = true;
 	do
@@ -479,11 +479,11 @@ int main()
 
 /*
 Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
-Input : this_is_message_from_parent_process
-Output :
+Input: this_is_message_from_parent_process
+Output:
 [child_process.exe] Start
-[child_process.exe] Command line parameters :
-[child_process.exe] argv[0]: D : \prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
+[child_process.exe] Command line parameters:
+[child_process.exe] argv[0]: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
 [child_process.exe] argv[1]: aa a
 [child_process.exe] argv[2]: bb
 [child_process.exe] argv[3]: b
@@ -499,7 +499,7 @@ Output :
 [child_process.exe] Hello World!
 
 Output:
-[child_process.exe] Input : this_is_message_from_parent_process
+[child_process.exe] Input:this_is_message_from_parent_process
 [child_process.exe] End
 
 WAIT_OBJECT_0
