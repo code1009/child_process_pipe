@@ -144,12 +144,74 @@ void process_pipe::destroy(void)
 
 /////////////////////////////////////////////////////////////////////////////
 //===========================================================================
+class process_output
+{
+public:
+	HANDLE _hexit{ nullptr };
+	HANDLE _hread{ nullptr };
+
+public:
+	process_output();
+	~process_output();
+
+private:
+	void create(void);
+	void destroy(void);
+};
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
+process_output::process_output()
+{
+	create();
+}
+
+process_output::~process_output()
+{
+	destroy();
+}
+
+void process_output::create(void)
+{
+	_hexit = CreateEventW(nullptr, false, false, nullptr);
+	if (nullptr == _hexit)
+	{
+		destroy();
+		throw std::runtime_error("Failed to CreateEventW()");
+	}
+	_hread = CreateEventW(nullptr, false, false, nullptr);
+	if (nullptr == _hexit)
+	{
+		destroy();
+		throw std::runtime_error("Failed to CreateEventW()");
+	}
+}
+
+void process_output::destroy(void)
+{
+	if (_hread != nullptr)
+	{
+		CloseHandle(_hread);
+		_hread = nullptr;
+	}
+	if (_hexit != nullptr)
+	{
+		CloseHandle(_hexit);
+		_hexit = nullptr;
+	}
+}
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
 class process_command
 {
 public:
 	std::wstring _command;
 	std::wstring _command_line;
-	std::thread _thread;
 
 	process_pipe _rpipe;
 	process_pipe _wpipe;
@@ -168,11 +230,6 @@ private:
 private:
 	void create(void);
 	void destroy(void);
-
-	void thread_entry(void);
-
-private:
-	void read_output(void);
 
 public:
 	void write_input(const std::wstring& s);
@@ -249,8 +306,6 @@ void process_command::create(void)
 		throw std::runtime_error("Failed to CreateProcessW()");
 	}
 
-
-	_thread = std::thread(&process_command::thread_entry, this);
 }
 
 void process_command::destroy(void)
@@ -279,12 +334,6 @@ void process_command::destroy(void)
 	}
 
 
-	if (_thread.joinable())
-	{
-		_thread.join();
-	}
-
-
 	if (_pi.hThread != nullptr)
 	{
 		CloseHandle(_pi.hThread);
@@ -294,69 +343,6 @@ void process_command::destroy(void)
 	{
 		CloseHandle(_pi.hProcess);
 		_pi.hProcess = nullptr;
-	}
-}
-
-void process_command::thread_entry(void)
-{
-	bool loop = true;
-	do
-	{
-		DWORD object;
-		object = WaitForSingleObject(_pi.hProcess, 1000);
-		switch (object)
-		{
-		case WAIT_OBJECT_0:
-			read_output();
-			std::wcout << L"WAIT_OBJECT_0" << std::endl;
-			loop = false;
-			break;
-
-		case WAIT_ABANDONED:
-			read_output();
-			std::wcout << L"WAIT_ABANDONED" << std::endl;
-			loop = false;
-			break;
-
-		case WAIT_TIMEOUT:
-			read_output();
-			break;
-
-		case WAIT_FAILED:
-			std::wcerr << L"WAIT_FAILED" << std::endl;
-			loop = false;
-			break;
-
-		default:
-			std::wcout << L"?" << object << std::endl;
-			loop = false;
-			break;
-		}
-	} while (loop);
-
-	std::wcout << L"Process has exited." << std::endl;
-}
-
-void process_command::read_output(void)
-{
-	DWORD TotalBytesAvail;
-
-
-	if (PeekNamedPipe(_rpipe._hread, nullptr, 0, nullptr, &TotalBytesAvail, nullptr))
-	{
-		if (TotalBytesAvail > 0)
-		{
-			std::vector<char> buffer(TotalBytesAvail);
-			DWORD NumberOfBytesRead;
-			if (ReadFile(_rpipe._hread, buffer.data(), static_cast<DWORD>(buffer.size()), &NumberOfBytesRead, nullptr))
-			{
-				if (NumberOfBytesRead > 0)
-				{
-					std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
-					std::wcout << "Output: " << std::endl << s << std::endl;
-				}
-			}
-		}
 	}
 }
 
@@ -476,32 +462,3 @@ int main()
 
 	return 0;
 }
-
-/*
-Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
-Input: this_is_message_from_parent_process
-Output:
-[child_process.exe] Start
-[child_process.exe] Command line parameters:
-[child_process.exe] argv[0]: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
-[child_process.exe] argv[1]: aa a
-[child_process.exe] argv[2]: bb
-[child_process.exe] argv[3]: b
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-
-Output:
-[child_process.exe] Input:this_is_message_from_parent_process
-[child_process.exe] End
-
-WAIT_OBJECT_0
-Process has exited.
-*/
