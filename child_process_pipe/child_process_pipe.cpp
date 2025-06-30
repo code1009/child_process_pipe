@@ -5,43 +5,21 @@
 #include <coroutine>
 #include <memory>
 
-/////////////////////////////////////////////////////////////////////////////
-// 간단한 generator 코루틴 구현
-struct process_coro {
-    struct promise_type {
-        process_coro get_return_object() { return process_coro{ std::coroutine_handle<promise_type>::from_promise(*this) }; }
-        std::suspend_always initial_suspend() noexcept { return {}; }
-        std::suspend_always final_suspend() noexcept { return {}; }
-        void return_void() noexcept {}
-        void unhandled_exception() { std::terminate(); }
-    };
-    std::coroutine_handle<promise_type> handle;
-    explicit process_coro(std::coroutine_handle<promise_type> h) : handle(h) {}
-    process_coro(const process_coro&) = delete;
-    process_coro& operator=(const process_coro&) = delete;
-    process_coro(process_coro&& other) noexcept : handle(other.handle) { other.handle = nullptr; }
-    process_coro& operator=(process_coro&& other) noexcept {
-        if (this != &other) {
-            if (handle) handle.destroy();
-            handle = other.handle;
-            other.handle = nullptr;
-        }
-        return *this;
-    }
-    ~process_coro() { if (handle) handle.destroy(); }
-    bool resume() { if (!handle.done()) { handle.resume(); return !handle.done(); } return false; }
-    bool done() const { return handle.done(); }
-};
+
+
+
 
 /////////////////////////////////////////////////////////////////////////////
-// 기존 함수 및 클래스 정의(생략, 기존 코드와 동일)
-
+//===========================================================================
 static std::wstring get_module_path(HMODULE hmodule = nullptr)
 {
     WCHAR path[MAX_PATH] = { 0 };
-    DWORD length = GetModuleFileNameW(hmodule, path, MAX_PATH);
+    DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
     if (length == 0 || length == MAX_PATH)
+    {
         return L"";
+    }
+
     return std::wstring(path, length);
 }
 
@@ -50,34 +28,61 @@ static std::wstring get_module_directory(HMODULE hmodule = nullptr)
     std::wstring path = get_module_path(hmodule);
     size_t pos = path.find_last_of(L"\\/");
     if (pos != std::wstring::npos)
+    {
         return path.substr(0, pos);
+    }
+
     return L"";
 }
 
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
 std::wstring mbcs_to_wcs(std::string input, UINT codepage)
 {
     int length = MultiByteToWideChar(codepage, 0, input.c_str(), -1, nullptr, 0);
+
+
     if (length > 0)
     {
         std::vector<wchar_t> buf(length);
+
+
         MultiByteToWideChar(codepage, 0, input.c_str(), -1, &buf[0], length);
+
         return std::wstring(&buf[0]);
     }
+
     return std::wstring();
 }
 
 std::string wcs_to_mbcs(std::wstring input, UINT codepage)
 {
     int length = WideCharToMultiByte(codepage, 0, input.c_str(), -1, nullptr, 0, nullptr, nullptr);
+
+
     if (length > 0)
     {
         std::vector<char> buf(length);
+
+
         WideCharToMultiByte(codepage, 0, input.c_str(), -1, &buf[0], length, nullptr, nullptr);
+
         return std::string(&buf[0]);
     }
+
     return std::string();
 }
 
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
 class process_pipe
 {
 public:
@@ -85,40 +90,137 @@ public:
     HANDLE _hwrite{ nullptr };
     SECURITY_ATTRIBUTES _sa = { 0 };
 
-    process_pipe() { create(); }
-    ~process_pipe() { destroy(); }
-private:
-    void create(void)
-    {
-        memset(&_sa, 0, sizeof(_sa));
-        _sa.nLength = sizeof(_sa);
-        _sa.bInheritHandle = TRUE;
-        _sa.lpSecurityDescriptor = nullptr;
+public:
+    process_pipe();
+    ~process_pipe();
 
-        BOOL rv = CreatePipe(&_hread, &_hwrite, &_sa, 0);
-        if (FALSE == rv)
-        {
-            destroy();
-            throw std::runtime_error("Failed to CreatePipe()");
-        }
-    }
-    void destroy(void)
-    {
-        if (_hread != nullptr)
-        {
-            CloseHandle(_hread);
-            _hread = nullptr;
-        }
-        if (_hwrite != nullptr)
-        {
-            CloseHandle(_hwrite);
-            _hwrite = nullptr;
-        }
-    }
+private:
+    void create(void);
+    void destroy(void);
 };
 
 /////////////////////////////////////////////////////////////////////////////
-// 코루틴 기반 process_command
+//===========================================================================
+process_pipe::process_pipe()
+{
+    create();
+}
+
+process_pipe::~process_pipe()
+{
+    destroy();
+}
+
+void process_pipe::create(void)
+{
+    memset(&_sa, 0, sizeof(_sa));
+    _sa.nLength = sizeof(_sa);
+    _sa.bInheritHandle = TRUE;
+    _sa.lpSecurityDescriptor = nullptr;
+
+    BOOL rv;
+    rv = CreatePipe(&_hread, &_hwrite, &_sa, 0);
+    if (FALSE == rv)
+    {
+        destroy();
+        throw std::runtime_error("Failed to CreatePipe()");
+    }
+}
+
+void process_pipe::destroy(void)
+{
+    if (_hread != nullptr)
+    {
+        CloseHandle(_hread);
+        _hread = nullptr;
+    }
+    if (_hwrite != nullptr)
+    {
+        CloseHandle(_hwrite);
+        _hwrite = nullptr;
+    }
+}
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
+struct process_coroutine
+{
+public:
+    struct promise_type
+    {
+        process_coroutine get_return_object() { return process_coroutine{ std::coroutine_handle<promise_type>::from_promise(*this) }; }
+        std::suspend_always initial_suspend() noexcept { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
+        void return_void() noexcept {}
+        void unhandled_exception() { std::terminate(); }
+    };
+
+public:
+    std::coroutine_handle<promise_type> _handle;
+
+public:
+    explicit process_coroutine(std::coroutine_handle<promise_type> h) : _handle(h) {}
+
+public:
+    process_coroutine(const process_coroutine&) = delete;
+    process_coroutine& operator=(const process_coroutine&) = delete;
+
+public:
+    process_coroutine(process_coroutine&& other) noexcept : _handle(other._handle)
+    {
+        other._handle = nullptr;
+    }
+
+    process_coroutine& operator=(process_coroutine&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (_handle)
+            {
+                _handle.destroy();
+            }
+
+            _handle = other._handle;
+            other._handle = nullptr;
+        }
+        return *this;
+    }
+
+public:
+    ~process_coroutine()
+    {
+        if (_handle)
+        {
+            _handle.destroy();
+        }
+    }
+
+public:
+    bool resume()
+    {
+        if (!_handle.done())
+        {
+            _handle.resume();
+            return !_handle.done();
+        }
+
+        return false;
+    }
+
+    bool done() const
+    {
+        return _handle.done();
+    }
+};
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
 class process_command
 {
 public:
@@ -131,9 +233,12 @@ public:
     STARTUPINFOW _si = { 0 };
     PROCESS_INFORMATION _pi = { 0 };
 
-    std::unique_ptr<process_coro> _coro;
+    std::unique_ptr<process_coroutine> _coroutine;
 
+public:
     explicit process_command(std::wstring const& command);
+
+public:
     ~process_command();
 
 private:
@@ -141,7 +246,7 @@ private:
     void create(void);
     void destroy(void);
 
-    process_coro coroutine_entry();
+    process_coroutine coroutine_entry();
 
     void read_output(void);
 
@@ -152,8 +257,10 @@ public:
     bool kill(void);
 };
 
-process_command::process_command(std::wstring const& command)
-    : _command(command)
+/////////////////////////////////////////////////////////////////////////////
+//===========================================================================
+process_command::process_command(std::wstring const& command) :
+    _command(command)
 {
     _command_line = make_command_line(command);
     create();
@@ -167,11 +274,35 @@ process_command::~process_command()
 std::wstring process_command::make_command_line(std::wstring const& file_path)
 {
     return file_path;
+
+#if 0
+    std::wstring cmd_file_path;
+    WCHAR szCmdFilePath[MAX_PATH] = { 0 };
+    DWORD dwReturn;
+    dwReturn = GetEnvironmentVariableW(L"ComSpec", szCmdFilePath, _countof(szCmdFilePath));
+    if (0 == dwReturn)
+    {
+        cmd_file_path = L"cmd.exe";
+    }
+    else
+    {
+        cmd_file_path = szCmdFilePath;
+    }
+
+
+    std::wstring command_line;
+    command_line = cmd_file_path;
+    command_line += L" /K \"";
+    command_line += file_path;
+    command_line += L"\"";
+    return command_line;
+#endif
 }
 
 void process_command::create(void)
 {
     std::wcout << L"Launch: " << _command_line << std::endl;
+
 
     memset(&_pi, 0, sizeof(_pi));
     memset(&_si, 0, sizeof(_si));
@@ -182,15 +313,17 @@ void process_command::create(void)
     _si.hStdInput = _wpipe._hread;
     _si.wShowWindow = SW_HIDE;
 
-    BOOL rv = CreateProcessW(nullptr, const_cast<LPWSTR>(_command_line.c_str()), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &_si, &_pi);
+
+    BOOL rv;
+    rv = CreateProcessW(nullptr, const_cast<LPWSTR>(_command_line.c_str()), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &_si, &_pi);
     if (FALSE == rv)
     {
         destroy();
         throw std::runtime_error("Failed to CreateProcessW()");
     }
 
-    // 코루틴 생성
-    _coro = std::make_unique<process_coro>(coroutine_entry());
+
+    _coroutine = std::make_unique<process_coroutine>(coroutine_entry());
 }
 
 void process_command::destroy(void)
@@ -207,7 +340,9 @@ void process_command::destroy(void)
         }
     }
 
-    _coro.reset();
+
+    _coroutine.reset();
+
 
     if (_pi.hThread != nullptr)
     {
@@ -221,13 +356,13 @@ void process_command::destroy(void)
     }
 }
 
-// 코루틴 진입점
-process_coro process_command::coroutine_entry()
+process_coroutine process_command::coroutine_entry()
 {
     bool loop = true;
     do
     {
-        DWORD object = WaitForSingleObject(_pi.hProcess, 1000);
+        DWORD object;
+        object = WaitForSingleObject(_pi.hProcess, 100);
         switch (object)
         {
         case WAIT_OBJECT_0:
@@ -235,33 +370,44 @@ process_coro process_command::coroutine_entry()
             std::wcout << L"WAIT_OBJECT_0" << std::endl;
             loop = false;
             break;
+
         case WAIT_ABANDONED:
             read_output();
             std::wcout << L"WAIT_ABANDONED" << std::endl;
             loop = false;
             break;
+
         case WAIT_TIMEOUT:
             read_output();
-            co_await std::suspend_always{};
             break;
+
         case WAIT_FAILED:
             std::wcerr << L"WAIT_FAILED" << std::endl;
             loop = false;
             break;
+
         default:
             std::wcout << L"?" << object << std::endl;
             loop = false;
             break;
         }
+
+        co_await std::suspend_always{};
+
     } while (loop);
 
+
     std::wcout << L"Process has exited." << std::endl;
+
+
     co_return;
 }
 
 void process_command::read_output(void)
 {
     DWORD TotalBytesAvail;
+
+
     if (PeekNamedPipe(_rpipe._hread, nullptr, 0, nullptr, &TotalBytesAvail, nullptr))
     {
         if (TotalBytesAvail > 0)
@@ -273,7 +419,7 @@ void process_command::read_output(void)
                 if (NumberOfBytesRead > 0)
                 {
                     std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
-                    std::wcout << L"Output: " << std::endl << s << std::endl;
+                    std::wcout << "Output: " << std::endl << s << std::endl;
                 }
             }
         }
@@ -283,6 +429,8 @@ void process_command::read_output(void)
 void process_command::write_input(const std::wstring& input)
 {
     std::wcout << L"Input: " << input << std::endl;
+
+
     std::wstring input_command = input + L"\n";
     std::string command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
 
@@ -297,26 +445,46 @@ bool process_command::wait(DWORD timeout)
 {
     if (nullptr == _pi.hProcess)
     {
-        throw std::runtime_error("process handle is null!");
+        throw std::runtime_error("process _handle is null!");
     }
 
-    // 코루틴을 모두 실행
-    while (_coro && !_coro->done()) {
-        _coro->resume();
+    
+    while (_coroutine && !_coroutine->done()) 
+    {
+        std::wcout << L"_coroutine->resume()" << std::endl;
+        _coroutine->resume();
     }
 
-    DWORD object = WaitForSingleObject(_pi.hProcess, timeout);
+
+    bool result = false;
+
+
+    DWORD object;
+    object = WaitForSingleObject(_pi.hProcess, timeout);
     switch (object)
     {
     case WAIT_OBJECT_0:
+        result = true;
+        break;
+
     case WAIT_ABANDONED:
-        return true;
+        result = true;
+        break;
+
     case WAIT_TIMEOUT:
-        return false;
+        result = false;
+        break;
+
     case WAIT_FAILED:
+        throw std::runtime_error("Failed to WaitForSingleObject()");
+        break;
+
     default:
         throw std::runtime_error("Failed to WaitForSingleObject()");
+        break;
     }
+
+    return result;
 }
 
 bool process_command::kill(void)
@@ -326,26 +494,48 @@ bool process_command::kill(void)
         throw std::runtime_error("process handle is null!");
     }
 
-    DWORD object = WaitForSingleObject(_pi.hProcess, 0);
+
+    bool result = false;
+
+
+    DWORD object;
+    object = WaitForSingleObject(_pi.hProcess, 0);
     switch (object)
     {
     case WAIT_OBJECT_0:
+        result = true;
+        break;
+
     case WAIT_ABANDONED:
-        return true;
+        result = true;
+        break;
+
     case WAIT_TIMEOUT:
         if (FALSE == TerminateProcess(_pi.hProcess, 0))
         {
-            return false;
+            result = false;
         }
         else
         {
-            return true;
+            result = true;
         }
+        break;
+
     case WAIT_FAILED:
+        throw std::runtime_error("Failed to WaitForSingleObject()");
+        break;
+
     default:
         throw std::runtime_error("Failed to WaitForSingleObject()");
+        break;
     }
+
+    return result;
 }
+
+
+
+
 
 /////////////////////////////////////////////////////////////////////////////
 //===========================================================================
@@ -359,3 +549,61 @@ int main()
 
     return 0;
 }
+
+/*
+
+Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
+Input: this_is_message_from_parent_process
+_coroutine->resume()
+Output:
+[child_process.exe] Start
+[child_process.exe] Command line parameters:
+[child_process.exe] argv[0]: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
+[child_process.exe] argv[1]: aa a
+[child_process.exe] argv[2]: bb
+[child_process.exe] argv[3]: b
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Hello World!
+
+_coroutine->resume()
+Output:
+[child_process.exe] Input:this_is_message_from_parent_process
+[child_process.exe] End
+
+WAIT_OBJECT_0
+_coroutine->resume()
+Process has exited.
+
+*/
