@@ -468,7 +468,7 @@ bool process_command::kill(void)
 //===========================================================================
 int main()
 {
-	std::wstring file_path = get_module_directory() + L"\\child_process.exe \"aa a\"";
+	std::wstring file_path = get_module_directory() + L"\\child_process.exe \"aa a\" bb b";
 	process_command cmd(file_path);
 
 	cmd.write_input(L"this_is_message_from_parent_process");
@@ -476,3 +476,32 @@ int main()
 
 	return 0;
 }
+
+/*
+Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
+Input : this_is_message_from_parent_process
+Output :
+[child_process.exe] Start
+[child_process.exe] Command line parameters :
+[child_process.exe] argv[0]: D : \prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
+[child_process.exe] argv[1]: aa a
+[child_process.exe] argv[2]: bb
+[child_process.exe] argv[3]: b
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+[child_process.exe] Hello World!
+
+Output:
+[child_process.exe] Input : this_is_message_from_parent_process
+[child_process.exe] End
+
+WAIT_OBJECT_0
+Process has exited.
+*/
