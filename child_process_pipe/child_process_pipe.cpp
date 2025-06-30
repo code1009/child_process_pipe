@@ -91,6 +91,9 @@ public:
 	process_pipe();
 	~process_pipe();
 
+public:
+	void close(void);
+
 private:
 	void create(void);
 	void destroy(void);
@@ -138,7 +141,10 @@ void process_pipe::destroy(void)
 	}
 }
 
-
+void process_pipe::close(void)
+{
+	destroy();
+}
 
 
 
@@ -146,9 +152,19 @@ void process_pipe::destroy(void)
 //===========================================================================
 class process_output
 {
-public:
-	HANDLE _hexit{ nullptr };
+private:
+	HANDLE _hstop{ nullptr };
 	HANDLE _hread{ nullptr };
+
+private:
+	std::thread _thread;
+	HANDLE _hfile{ nullptr };
+
+	const DWORD BUFFER_SIZE = 4096;
+	std::vector<char> _buffer;
+	DWORD _NumberOfBytesRead;
+	OVERLAPPED _io_ov;
+	bool _loop;
 
 public:
 	process_output();
@@ -157,6 +173,15 @@ public:
 private:
 	void create(void);
 	void destroy(void);
+
+public:
+	void start(HANDLE hfile);
+	void stop();
+
+private:
+	void thread_entry(void);
+	void wait_event(void);
+	void read(void);
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -173,18 +198,20 @@ process_output::~process_output()
 
 void process_output::create(void)
 {
-	_hexit = CreateEventW(nullptr, false, false, nullptr);
-	if (nullptr == _hexit)
+	_hstop = CreateEventW(nullptr, false, false, nullptr);
+	if (nullptr == _hstop)
 	{
 		destroy();
 		throw std::runtime_error("Failed to CreateEventW()");
 	}
 	_hread = CreateEventW(nullptr, false, false, nullptr);
-	if (nullptr == _hexit)
+	if (nullptr == _hstop)
 	{
 		destroy();
 		throw std::runtime_error("Failed to CreateEventW()");
 	}
+
+	_buffer.assign(BUFFER_SIZE, 0);
 }
 
 void process_output::destroy(void)
@@ -194,13 +221,151 @@ void process_output::destroy(void)
 		CloseHandle(_hread);
 		_hread = nullptr;
 	}
-	if (_hexit != nullptr)
+	if (_hstop != nullptr)
 	{
-		CloseHandle(_hexit);
-		_hexit = nullptr;
+		CloseHandle(_hstop);
+		_hstop = nullptr;
 	}
 }
 
+void process_output::start(HANDLE hfile)
+{
+	if (_thread.joinable())
+	{
+		_thread.join();
+	}
+
+	_hfile = hfile;
+	_thread = std::thread(&process_output::thread_entry, this);
+}
+
+void process_output::stop(void)
+{
+	if (_thread.joinable())
+	{
+		SetEvent(_hstop);
+
+		_thread.join();
+	}
+}
+
+void process_output::thread_entry(void)
+{
+	_loop = true;
+
+
+	BOOL result;
+	DWORD error;
+	BOOL rv;
+	while (_loop)
+	{
+		memset(&_io_ov, 0, sizeof(_io_ov));
+		_io_ov.hEvent = _hread;
+		result = ReadFile(_hfile, _buffer.data(), BUFFER_SIZE, &_NumberOfBytesRead, &_io_ov);
+		if (TRUE == result)
+		{
+			std::cerr << "TRUE" << std::endl;
+			wait_event();
+			continue;
+		}
+
+
+		error = GetLastError();
+		switch (error)
+		{
+		case NO_ERROR:
+			std::cerr << "NO_ERROR" << std::endl;
+			break;
+
+		case ERROR_IO_PENDING:
+			wait_event();
+			continue;
+
+		case ERROR_BROKEN_PIPE:
+			std::cerr << "ERROR_BROKEN_PIPE" << std::endl;
+			_loop = false;
+			break;
+
+		case ERROR_INVALID_HANDLE:
+			std::cerr << "ERROR_INVALID_HANDLE" << std::endl;
+			_loop = false;
+			break;
+
+		default:
+			std::cerr << "?:" << error << std::endl;
+			_loop = false;
+			break;
+		}
+
+
+		std::cerr << "CancelIoEx()" << std::endl;
+		rv = CancelIoEx(_hfile, &_io_ov);
+		if (FALSE == rv)
+		{
+			std::cerr << "CancelIoEx() failed" << std::endl;
+		}
+	}
+}
+
+void process_output::wait_event(void)
+{
+	HANDLE handles[2];
+	handles[0] = _hstop;
+	handles[1] = _hread;
+
+
+	DWORD object;
+	object = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+	switch (object)
+	{
+	case WAIT_OBJECT_0 + 0:
+		_loop = false;
+		break;
+
+	case WAIT_ABANDONED_0 + 0:
+		_loop = false;
+		break;
+
+	case WAIT_OBJECT_0 + 1:
+		read();
+		break;
+
+	case WAIT_ABANDONED_0 + 1:
+		read();
+		break;
+
+	case WAIT_TIMEOUT:
+		break;
+
+	case WAIT_FAILED:
+		_loop = false;
+		break;
+
+	default:
+		_loop = false;
+		break;
+	}
+}
+
+void process_output::read(void)
+{
+	BOOL result;
+	DWORD NumberOfBytesRead;
+	result = GetOverlappedResult(_hfile, &_io_ov, &NumberOfBytesRead, TRUE);
+	if (FALSE == result)
+	{
+		std::cerr << "GetOverlappedResult() failed" << std::endl;
+		_loop = false;
+		return;
+	}
+
+
+	if (NumberOfBytesRead > 0)
+	{
+		std::wstring s = mbcs_to_wcs(std::string(_buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
+		std::wcout << "Output: " << std::endl << s << std::endl;
+	}
+}
 
 
 
@@ -215,6 +380,7 @@ public:
 
 	process_pipe _rpipe;
 	process_pipe _wpipe;
+	process_output _output;
 
 	STARTUPINFOW _si = { 0 };
 	PROCESS_INFORMATION _pi = { 0 };
@@ -306,6 +472,8 @@ void process_command::create(void)
 		throw std::runtime_error("Failed to CreateProcessW()");
 	}
 
+
+	_output.start(_rpipe._hread);
 }
 
 void process_command::destroy(void)
@@ -333,7 +501,7 @@ void process_command::destroy(void)
 		}
 	}
 
-
+	
 	if (_pi.hThread != nullptr)
 	{
 		CloseHandle(_pi.hThread);
@@ -344,6 +512,11 @@ void process_command::destroy(void)
 		CloseHandle(_pi.hProcess);
 		_pi.hProcess = nullptr;
 	}
+
+
+	_rpipe.close();
+
+	_output.stop();
 }
 
 void process_command::write_input(const std::wstring& input)
