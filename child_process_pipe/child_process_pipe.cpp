@@ -303,7 +303,7 @@ void process_command::thread_entry(void)
 	do
 	{
 		DWORD object;
-		object = WaitForSingleObject(_pi.hProcess, 1000);
+		object = WaitForSingleObject(_pi.hProcess, 100);
 		switch (object)
 		{
 		case WAIT_OBJECT_0:
