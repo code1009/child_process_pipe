@@ -17,7 +17,7 @@
 static std::wstring get_module_path(HMODULE hmodule = nullptr)
 {
 	WCHAR path[MAX_PATH] = { 0 };
-	DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
+	DWORD length = GetModuleFileNameW(nullptr, path, MAX_PATH);
 	if (length == 0 || length == MAX_PATH)
 		return L"";
 	return std::wstring(path, length);
@@ -40,7 +40,7 @@ static std::wstring get_module_directory(HMODULE hmodule = nullptr)
 //===========================================================================
 std::wstring mbcs_to_wcs(std::string input, UINT codepage)
 {
-	int length = MultiByteToWideChar(codepage, 0, input.c_str(), -1, NULL, 0);
+	int length = MultiByteToWideChar(codepage, 0, input.c_str(), -1, nullptr, 0);
 
 
 	if (length > 0)
@@ -58,7 +58,7 @@ std::wstring mbcs_to_wcs(std::string input, UINT codepage)
 
 std::string wcs_to_mbcs(std::wstring input, UINT codepage)
 {
-	int length = WideCharToMultiByte(codepage, 0, input.c_str(), -1, NULL, 0, NULL, NULL);
+	int length = WideCharToMultiByte(codepage, 0, input.c_str(), -1, nullptr, 0, nullptr, nullptr);
 
 
 	if (length > 0)
@@ -66,7 +66,7 @@ std::string wcs_to_mbcs(std::wstring input, UINT codepage)
 		std::vector<char> buf(length);
 
 
-		WideCharToMultiByte(codepage, 0, input.c_str(), -1, &buf[0], length, NULL, NULL);
+		WideCharToMultiByte(codepage, 0, input.c_str(), -1, &buf[0], length, nullptr, nullptr);
 
 		return std::string(&buf[0]);
 	}
@@ -113,7 +113,7 @@ void process_pipe::create(void)
 	memset(&_sa, 0, sizeof(_sa));
 	_sa.nLength = sizeof(_sa);
 	_sa.bInheritHandle = TRUE;
-	_sa.lpSecurityDescriptor = NULL;
+	_sa.lpSecurityDescriptor = nullptr;
 
 	BOOL rv;
 	rv = CreatePipe(&_hread, &_hwrite, &_sa, 0);
@@ -242,7 +242,7 @@ void process_command::create(void)
 
 
 	BOOL rv;
-	rv = CreateProcessW(NULL, const_cast<LPWSTR>(_command_line.c_str()), NULL, NULL, TRUE, 0, NULL, NULL, &_si, &_pi);
+	rv = CreateProcessW(nullptr, const_cast<LPWSTR>(_command_line.c_str()), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &_si, &_pi);
 	if (FALSE == rv)
 	{
 		destroy();
@@ -342,13 +342,13 @@ void process_command::read_output(void)
 	DWORD TotalBytesAvail;
 
 
-	if (PeekNamedPipe(_rpipe._hread, NULL, 0, NULL, &TotalBytesAvail, NULL))
+	if (PeekNamedPipe(_rpipe._hread, nullptr, 0, nullptr, &TotalBytesAvail, nullptr))
 	{
 		if (TotalBytesAvail > 0)
 		{
 			std::vector<char> buffer(TotalBytesAvail);
 			DWORD NumberOfBytesRead;
-			if (ReadFile(_rpipe._hread, buffer.data(), static_cast<DWORD>(buffer.size()), &NumberOfBytesRead, NULL))
+			if (ReadFile(_rpipe._hread, buffer.data(), static_cast<DWORD>(buffer.size()), &NumberOfBytesRead, nullptr))
 			{
 				if (NumberOfBytesRead > 0)
 				{
@@ -368,10 +368,10 @@ void process_command::write_input(std::wstring input)
 	std::wstring input_command = input + L"\n";
 	std::string command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
 
-	if (_wpipe._hwrite != NULL)
+	if (_wpipe._hwrite != nullptr)
 	{
 		DWORD NumberOfBytesWritten;
-		WriteFile(_wpipe._hwrite, command.c_str(), static_cast<DWORD>(command.size()), &NumberOfBytesWritten, NULL);
+		WriteFile(_wpipe._hwrite, command.c_str(), static_cast<DWORD>(command.size()), &NumberOfBytesWritten, nullptr);
 	}
 }
 
