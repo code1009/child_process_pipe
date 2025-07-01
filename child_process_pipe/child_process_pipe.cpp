@@ -213,9 +213,9 @@ process_command::~process_command()
 //===========================================================================
 std::wstring process_command::make_command_line(std::wstring const& command)
 {
-	return command;
-
 #if 0
+	return command;
+#else
 	std::wstring cmd_file_path;
 	WCHAR szCmdFilePath[MAX_PATH] = { 0 };
 	DWORD dwReturn;
@@ -232,7 +232,9 @@ std::wstring process_command::make_command_line(std::wstring const& command)
 
 	std::wstring command_line;
 	command_line = cmd_file_path;
-	command_line += L" /K \"";
+	command_line += L" /D ";
+	//command_line += L" /U ";
+	command_line += L" /C \"";
 	command_line += command;
 	command_line += L"\"";
 	return command_line;
@@ -548,13 +550,15 @@ int main()
 		std::wcout << L"exit code: " << cmd.get_exit_code() << std::endl;
 	}
 
+	process_command cmd_dir(L"dir");
+	cmd_dir.wait();
+
 	return 0;
 }
 
 /*
-
 부모프로세스시작
-Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
+Launch: C:\WINDOWS\system32\cmd.exe /D  /C "D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b"
 Input:  가-부모프로세스에서보냄
 Output:
 [child_process.exe] 시작
@@ -611,4 +615,24 @@ Output:
 WAIT_OBJECT_0
 Process has exited.
 exit code: 2
+Launch: C:\WINDOWS\system32\cmd.exe /D  /C "dir"
+Output:
+ Volume in drive D is DATA
+ Volume Serial Number is A827-C9DE
+
+ Directory of D:\prj_my\child_process_pipe\child_process_pipe\child_process_pipe
+
+2025-07-01  오전 10:47    <DIR>          .
+2025-07-01  오전 10:26    <DIR>          ..
+2025-07-01  오전 10:47            13,226 child_process_pipe.cpp
+2025-06-30  오후 09:13             6,480 child_process_pipe.vcxproj
+2025-06-30  오후 05:05               996 child_process_pipe.vcxproj.filters
+2025-06-30  오후 05:05               168 child_process_pipe.vcxproj.user
+2025-06-30  오후 05:12    <DIR>          x64
+			   4 File(s)         20,870 bytes
+			   3 Dir(s)  411,204,358,144 bytes free
+
+WAIT_OBJECT_0
+Process has exited.
+
 */
