@@ -179,6 +179,9 @@ public:
 
 	bool wait(DWORD timeout = INFINITE);
 	bool kill(void);
+
+public:
+	DWORD get_exit_code(void);
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -303,7 +306,7 @@ void process_command::thread_entry(void)
 	do
 	{
 		DWORD object;
-		object = WaitForSingleObject(_pi.hProcess, 1000);
+		object = WaitForSingleObject(_pi.hProcess, 100);
 		switch (object)
 		{
 		case WAIT_OBJECT_0:
@@ -460,6 +463,22 @@ bool process_command::kill(void)
 	return result;
 }
 
+DWORD process_command::get_exit_code(void)
+{
+	if (nullptr == _pi.hProcess)
+	{
+		throw std::runtime_error("process handle is null!");
+	}
+
+
+	DWORD exit_code = 0;
+	if (GetExitCodeProcess(_pi.hProcess, &exit_code) == FALSE)
+	{
+		throw std::runtime_error("Failed to GetExitCodeProcess()");
+	}
+
+	return exit_code;
+}
 
 
 
@@ -472,7 +491,10 @@ int main()
 	process_command cmd(file_path);
 
 	cmd.write_input(L"this_is_message_from_parent_process");
-	cmd.wait();
+	if (cmd.wait())
+	{
+		std::wcout << L"exit code: " << cmd.get_exit_code() << std::endl;
+	}
 
 	return 0;
 }
@@ -498,7 +520,8 @@ Output:
 [child_process.exe] Hello World!
 [child_process.exe] Hello World!
 
-Output:
+exit code: Output: 2
+
 [child_process.exe] Input:this_is_message_from_parent_process
 [child_process.exe] End
 
