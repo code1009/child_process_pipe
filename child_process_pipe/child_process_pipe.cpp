@@ -148,125 +148,6 @@ void process_pipe::close(void)
 
 
 
-/////////////////////////////////////////////////////////////////////////////
-//===========================================================================
-class process_output
-{
-private:
-	std::thread _thread;
-	HANDLE _hfile{ nullptr };
-
-	const DWORD BUFFER_SIZE = 4096;
-	std::vector<char> _buffer;
-	DWORD _NumberOfBytesRead;
-	std::atomic_bool _loop{ false };
-
-public:
-	process_output();
-	~process_output();
-
-private:
-	void create(void);
-	void destroy(void);
-
-public:
-	void start(HANDLE hfile);
-	void stop();
-
-private:
-	void thread_entry(void);
-};
-
-/////////////////////////////////////////////////////////////////////////////
-//===========================================================================
-process_output::process_output()
-{
-	create();
-}
-
-process_output::~process_output()
-{
-	destroy();
-}
-
-void process_output::create(void)
-{
-	_buffer.assign(BUFFER_SIZE, 0);
-}
-
-void process_output::destroy(void)
-{
-}
-
-void process_output::start(HANDLE hfile)
-{
-	if (_thread.joinable())
-	{
-		_thread.join();
-	}
-
-	_hfile = hfile;
-	_thread = std::thread(&process_output::thread_entry, this);
-}
-
-void process_output::stop(void)
-{
-	_loop = false;
-
-	if (_thread.joinable())
-	{
-		_thread.join();
-	}
-}
-
-void process_output::thread_entry(void)
-{
-	_loop = true;
-
-
-	BOOL result;
-	DWORD error;
-	while (_loop)
-	{
-		result = ReadFile(_hfile, _buffer.data(), BUFFER_SIZE, &_NumberOfBytesRead, nullptr);
-		if (TRUE == result)
-		{
-			if (_NumberOfBytesRead > 0)
-			{
-				std::wstring s = mbcs_to_wcs(std::string(_buffer.data(), _NumberOfBytesRead), CP_THREAD_ACP);
-				std::wcout << "Output: " << std::endl << s << std::endl;
-			}
-			continue;
-		}
-
-
-		error = GetLastError();
-		switch (error)
-		{
-		case NO_ERROR:
-			std::cerr << "NO_ERROR" << std::endl;
-			_loop = false;
-			break;
-
-		case ERROR_BROKEN_PIPE:
-			std::cerr << "ERROR_BROKEN_PIPE" << std::endl;
-			_loop = false;
-			break;
-
-		case ERROR_INVALID_HANDLE:
-			std::cerr << "ERROR_INVALID_HANDLE" << std::endl;
-			_loop = false;
-			break;
-
-		default:
-			std::cerr << "?:" << error << std::endl;
-			_loop = false;
-			break;
-		}
-	}
-}
-
-
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -279,11 +160,11 @@ public:
 
 	process_pipe _rpipe;
 	process_pipe _wpipe;
-	process_output _output;
 
 	STARTUPINFOW _si = { 0 };
 	PROCESS_INFORMATION _pi = { 0 };
 
+	std::thread _thread;
 
 public:
 	explicit process_command(std::wstring const& command);
@@ -295,6 +176,7 @@ private:
 private:
 	void create(void);
 	void destroy(void);
+	void thread_entry(void);
 
 public:
 	void write_input(const std::wstring& s);
@@ -372,7 +254,13 @@ void process_command::create(void)
 	}
 
 
-	_output.start(_rpipe._hread);
+	if (_thread.joinable())
+	{
+		_thread.join();
+	}
+
+
+	_thread = std::thread(&process_command::thread_entry, this);
 }
 
 void process_command::destroy(void)
@@ -410,13 +298,6 @@ void process_command::destroy(void)
 			std::wcerr << L"process return code: " << code << std::endl;
 		}
 	}
-
-
-	_rpipe.close();
-	_wpipe.close();
-	Sleep(1000);
-	_output.stop();
-
 	
 	
 	if (_pi.hThread != nullptr)
@@ -428,6 +309,74 @@ void process_command::destroy(void)
 	{
 		CloseHandle(_pi.hProcess);
 		_pi.hProcess = nullptr;
+	}
+
+
+	_rpipe.close();
+	_wpipe.close();
+	if (_thread.joinable())
+	{
+		_thread.join();
+	}
+}
+
+void process_command::thread_entry(void)
+{
+	const DWORD BUFFER_SIZE = 4096;
+	std::vector<char> _buffer;
+	DWORD _NumberOfBytesRead;
+	_buffer.assign(BUFFER_SIZE, 0);
+
+
+	bool _loop;
+	_loop = true;
+
+
+	BOOL result;
+	DWORD error;
+	while (_loop)
+	{
+		std::wcout << "ReadFile: " << _rpipe._hread << std::endl;
+		result = ReadFile(_rpipe._hread, _buffer.data(), BUFFER_SIZE, &_NumberOfBytesRead, nullptr);
+		if (TRUE == result)
+		{
+			if (_NumberOfBytesRead > 0)
+			{
+				std::wstring s = mbcs_to_wcs(std::string(_buffer.data(), _NumberOfBytesRead), CP_THREAD_ACP);
+				std::wcout << "Output: " << std::endl << s << std::endl;
+				continue;
+			}
+			else
+			{
+				std::cerr << "ReadFile returned 0 bytes." << std::endl;
+				_loop = false;
+			}
+		}
+
+
+		error = GetLastError();
+		switch (error)
+		{
+		case NO_ERROR:
+			std::cerr << "NO_ERROR" << std::endl;
+			_loop = false;
+			break;
+
+		case ERROR_BROKEN_PIPE:
+			std::cerr << "ERROR_BROKEN_PIPE" << std::endl;
+			_loop = false;
+			break;
+
+		case ERROR_INVALID_HANDLE:
+			std::cerr << "ERROR_INVALID_HANDLE" << std::endl;
+			_loop = false;
+			break;
+
+		default:
+			std::cerr << "?:" << error << std::endl;
+			_loop = false;
+			break;
+		}
 	}
 }
 
