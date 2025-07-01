@@ -146,8 +146,9 @@ void process_pipe::destroy(void)
 //===========================================================================
 class process_command
 {
-public:
-	std::wstring _command;
+private:
+	std::wstring _process;
+	std::wstring _current_directory;
 	std::wstring _command_line;
 	std::thread _thread;
 
@@ -157,9 +158,8 @@ public:
 	STARTUPINFOW _si = { 0 };
 	PROCESS_INFORMATION _pi = { 0 };
 
-
 public:
-	explicit process_command(std::wstring const& command);
+	explicit process_command(std::wstring const& process, std::wstring const& current_directory);
 	~process_command();
 	
 private:
@@ -177,19 +177,20 @@ private:
 public:
 	void write_input(const std::wstring& s);
 
-	bool wait(DWORD timeout = INFINITE);
-	bool kill(void);
+	bool wait(std::uint32_t timeout = INFINITE);
+	bool kill(std::uint32_t exit_code=0xffffffff);
 
 public:
-	DWORD get_exit_code(void);
+	std::uint32_t get_exit_code(void);
 };
 
 /////////////////////////////////////////////////////////////////////////////
 //===========================================================================
-process_command::process_command(std::wstring const& command):
-	_command(command)
+process_command::process_command(std::wstring const& process, std::wstring const& current_directory):
+	_process(process),
+	_current_directory(current_directory)
 {
-	_command_line = make_command_line(command);
+	_command_line = make_command_line(_process);
 
 	create();
 }
@@ -200,9 +201,9 @@ process_command::~process_command()
 }
 
 //===========================================================================
-std::wstring process_command::make_command_line(std::wstring const& file_path)
+std::wstring process_command::make_command_line(std::wstring const& command)
 {
-	return file_path;
+	return command;
 
 #if 0
 	std::wstring cmd_file_path;
@@ -222,7 +223,7 @@ std::wstring process_command::make_command_line(std::wstring const& file_path)
 	std::wstring command_line;
 	command_line = cmd_file_path;
 	command_line += L" /K \"";
-	command_line += file_path;
+	command_line += command;
 	command_line += L"\"";
 	return command_line;
 #endif
@@ -245,7 +246,18 @@ void process_command::create(void)
 
 
 	BOOL rv;
-	rv = CreateProcessW(nullptr, const_cast<LPWSTR>(_command_line.c_str()), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &_si, &_pi);
+	rv = CreateProcessW(
+		nullptr, 
+		const_cast<LPWSTR>(_command_line.c_str()), 
+		nullptr, 
+		nullptr, 
+		TRUE, 
+		0, 
+		nullptr, 
+		nullptr, 
+		&_si, 
+		&_pi
+	);
 	if (FALSE == rv)
 	{
 		destroy();
@@ -378,7 +390,7 @@ void process_command::write_input(const std::wstring& input)
 	}
 }
 
-bool process_command::wait(DWORD timeout)
+bool process_command::wait(std::uint32_t timeout)
 {
 	if (nullptr == _pi.hProcess)
 	{
@@ -417,7 +429,7 @@ bool process_command::wait(DWORD timeout)
 	return result;
 }
 
-bool process_command::kill(void)
+bool process_command::kill(std::uint32_t exit_code)
 {
 	if (nullptr == _pi.hProcess)
 	{
@@ -441,7 +453,7 @@ bool process_command::kill(void)
 		break;
 
 	case WAIT_TIMEOUT:
-		if (FALSE==TerminateProcess(_pi.hProcess, 0))
+		if (FALSE==TerminateProcess(_pi.hProcess, exit_code))
 		{
 			result = false;
 		}
@@ -463,7 +475,7 @@ bool process_command::kill(void)
 	return result;
 }
 
-DWORD process_command::get_exit_code(void)
+std::uint32_t process_command::get_exit_code(void)
 {
 	if (nullptr == _pi.hProcess)
 	{
