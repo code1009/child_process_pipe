@@ -390,7 +390,8 @@ void process_command::read_output(void)
 			{
 				if (NumberOfBytesRead > 0)
 				{
-					std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
+					//std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
+					std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_UTF8);
 					std::wcout << "Output: " << std::endl << s << std::endl;
 				}
 				else
@@ -410,7 +411,8 @@ void process_command::write_input(const std::wstring& input)
 	std::wstring input_command;
 	std::string command;
 	input_command = input + L"\n";
-	command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
+	//command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
+	command = wcs_to_mbcs(input_command, CP_UTF8);
 	if (_wpipe._hwrite != nullptr)
 	{
 		DWORD NumberOfBytesWritten;
@@ -527,12 +529,22 @@ std::uint32_t process_command::get_exit_code(void)
 //===========================================================================
 int main()
 {
+	SetConsoleOutputCP(CP_UTF8);
+	SetConsoleCP(CP_UTF8);
+	//std::locale::global(std::locale("ko_KR.UTF8"));
+	std::wcout.imbue(std::locale("ko_KR.UTF-8"));
+	std::wcin.imbue(std::locale("ko_KR.UTF-8"));
+
+
+	std::wcout << L"부모프로세스시작" << std::endl;
+
 	std::wstring file_path = get_module_directory() + L"\\child_process.exe \"aa a\" bb b";
 	process_command cmd(file_path);
 
-	cmd.write_input(L"this_is_message_from_parent_process");
+	cmd.write_input(L" 가-부모프로세스에서보냄");
 	if (cmd.wait())
 	{
+		Sleep(1000);
 		std::wcout << L"exit code: " << cmd.get_exit_code() << std::endl;
 	}
 
@@ -540,31 +552,63 @@ int main()
 }
 
 /*
+
+부모프로세스시작
 Launch: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe "aa a" bb b
-Input: this_is_message_from_parent_process
+Input:  가-부모프로세스에서보냄
 Output:
-[child_process.exe] Start
+[child_process.exe] 시작
 [child_process.exe] Command line parameters:
 [child_process.exe] argv[0]: D:\prj_my\child_process_pipe\child_process_pipe\x64\Debug\child_process.exe
 [child_process.exe] argv[1]: aa a
 [child_process.exe] argv[2]: bb
 [child_process.exe] argv[3]: b
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
-[child_process.exe] Hello World!
+[child_process.exe] 안녕, 세상!
 
-exit code: Output: 2
+Output:
+[child_process.exe] 안녕, 세상!
 
-[child_process.exe] Input:this_is_message_from_parent_process
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] 안녕, 세상!
+
+Output:
+[child_process.exe] Input:가-부모프로세스에서보냄
+[child_process.exe] [0] a,c00
+[child_process.exe] [1] 2d
+[child_process.exe] [2] b,d80
+[child_process.exe] [3] b,aa8
+[child_process.exe] [4] d,504
+[child_process.exe] [5] b,85c
+[child_process.exe] [6] c,138
+[child_process.exe] [7] c,2a4
+[child_process.exe] [8] c,5d0
+[child_process.exe] [9] c,11c
+[child_process.exe] [a] b,cf4
+[child_process.exe] [b] b,0c4
 [child_process.exe] End
 
 WAIT_OBJECT_0
 Process has exited.
+exit code: 2
 */

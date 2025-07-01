@@ -4,7 +4,14 @@
 
 int main()
 {
-    std::wcout << L"[child_process.exe] Start" << std::endl;;
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    //std::locale::global(std::locale("ko_KR.UTF8"));
+    std::wcout.imbue(std::locale("ko_KR.UTF-8"));
+    std::wcin.imbue(std::locale("ko_KR.UTF-8"));
+
+
+    std::wcout << L"[child_process.exe] 시작" << std::endl;
 
 
     int argc = 0;
@@ -30,17 +37,20 @@ int main()
     count = 10;
     for (i = 0; i < count; i++)
     {
-        std::wcout << L"[child_process.exe] Hello World!" << std::endl;;
+        std::wcout << L"[child_process.exe] 안녕, 세상!" << std::endl;
         Sleep(100);
     }
 
 
     std::wstring s;
     std::wcin >> s;
-    std::wcout << L"[child_process.exe] Input:" << s << std::endl;;
+    std::wcout << L"[child_process.exe] Input:" << s << std::endl;
+    for(std::size_t j = 0; j < s.size(); j++)
+    {
+		std::wcout << L"[child_process.exe] [" << j << L"] " << std::hex << static_cast<std::uint16_t>(s[j]) << std::endl;
+	}
 
-
-    std::wcout << L"[child_process.exe] End" << std::endl;;
+    std::wcout << L"[child_process.exe] End" << std::endl;
 
     return 2;
 }
