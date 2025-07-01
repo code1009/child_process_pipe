@@ -380,8 +380,6 @@ void process_command::thread_entry(void)
 void process_command::read_output(void)
 {
 	DWORD TotalBytesAvail;
-
-
 	if (PeekNamedPipe(_rpipe._hread, nullptr, 0, nullptr, &TotalBytesAvail, nullptr))
 	{
 		if (TotalBytesAvail > 0)
@@ -409,9 +407,10 @@ void process_command::write_input(const std::wstring& input)
 	std::wcout << L"Input: " << input << std::endl;
 
 
-	std::wstring input_command = input + L"\n";
-	std::string command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
-
+	std::wstring input_command;
+	std::string command;
+	input_command = input + L"\n";
+	command = wcs_to_mbcs(input_command, CP_THREAD_ACP);
 	if (_wpipe._hwrite != nullptr)
 	{
 		DWORD NumberOfBytesWritten;
