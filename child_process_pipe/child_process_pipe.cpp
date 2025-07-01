@@ -159,6 +159,7 @@ private:
 	PROCESS_INFORMATION _pi = { 0 };
 
 public:
+	explicit process_command(std::wstring const& process);
 	explicit process_command(std::wstring const& process, std::wstring const& current_directory);
 	~process_command();
 	
@@ -186,7 +187,16 @@ public:
 
 /////////////////////////////////////////////////////////////////////////////
 //===========================================================================
-process_command::process_command(std::wstring const& process, std::wstring const& current_directory):
+process_command::process_command(std::wstring const& process):
+	_process(process),
+	_current_directory{}
+{
+	_command_line = make_command_line(_process);
+
+	create();
+}
+
+process_command::process_command(std::wstring const& process, std::wstring const& current_directory) :
 	_process(process),
 	_current_directory(current_directory)
 {
@@ -234,6 +244,21 @@ void process_command::create(void)
 {
 	std::wcout << L"Launch: " << _command_line << std::endl;
 
+	
+	LPCWSTR lpCurrentDirectory = nullptr;
+	if (!_current_directory.empty())
+	{
+		lpCurrentDirectory = _current_directory.c_str();
+	}
+	else
+	{
+		lpCurrentDirectory = nullptr;
+	}
+
+
+	LPVOID lpEnvironment = nullptr;
+
+
 
 	memset(&_pi, 0, sizeof(_pi));
 	memset(&_si, 0, sizeof(_si));
@@ -253,8 +278,8 @@ void process_command::create(void)
 		nullptr, 
 		TRUE, 
 		0, 
-		nullptr, 
-		nullptr, 
+		lpEnvironment,
+		lpCurrentDirectory,
 		&_si, 
 		&_pi
 	);
@@ -281,7 +306,7 @@ void process_command::destroy(void)
 			break;
 
 		case WAIT_TIMEOUT:
-			if (FALSE == TerminateProcess(_pi.hProcess, 0))
+			if (FALSE == TerminateProcess(_pi.hProcess, 0xffffffff))
 			{
 				std::wcerr << L"Failed to TerminateProcess()" << std::endl;
 			}
@@ -369,6 +394,10 @@ void process_command::read_output(void)
 				{
 					std::wstring s = mbcs_to_wcs(std::string(buffer.data(), NumberOfBytesRead), CP_THREAD_ACP);
 					std::wcout << "Output: " << std::endl << s << std::endl;
+				}
+				else
+				{
+					std::wcerr << L"Failed to ReadFile() - NumberOfBytesRead is 0." << std::endl;
 				}
 			}
 		}
